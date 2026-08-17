@@ -10,10 +10,7 @@
     "flatpickr",
     "google-places"
   ],
-  "author": {
-    "name": "Digital Sparks",
-    "url": "https://digital-sparks.com/"
-  },
+  "author": "alen hazl",
   "type": "module",
   "main": "src/index.js",
   "module": "src/index.js",
