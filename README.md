@@ -91,7 +91,11 @@ module uses, so the validation and URL modules stay decoupled from the markup.
 | `data-location-item`    | A template item inside the list                                                  | Cloned once per suggestion.                                                                                   |
 | `data-location-city`    | A text element inside each item                                                  | Receives the city name.                                                                                       |
 | `data-location-country` | A text element inside each item                                                  | Receives the country name.                                                                                    |
-| `data-location-error`   | The error message element                                                        | Shown when the field is invalid.                                                                              |
+
+> The error message for each location field is not part of the autocomplete
+> itself — it is wired up by the validation module. Use `data-field-error-origin`
+> on the Origin error element and `data-field-error-destination` on the
+> Destination error element (see the "Calculate button, form & errors" table).
 
 > If an item has neither `data-location-city` nor `data-location-country`, the
 > whole item's text is set to `"City, Country"`.
@@ -202,31 +206,47 @@ pnpm format      # Prettier write
 
 ## Webflow Integration
 
-Add the loader script to **Project Settings → Custom Code → Head Code**, then
-load the bundle on the page:
+Add the built bundle to **Project Settings → Custom Code → Head Code** (or the
+page's custom code) as a `<script>` tag pointing at the CDN URL:
 
 ```html
-<script>
-  loadResource('index.js', 'script');
-</script>
+<script src="https://raw.githack.com/alenHazl/test-project-2-shipping/master/dist/index.js"></script>
 ```
 
-The loader handles staging vs production and cache busting. See
-[DEVELOPMENT_SETUP.md](DEVELOPMENT_SETUP.md) for the full loader script and
-configuration.
+The bundle is served from the GitHub repo via a CDN, so after a change you must
+`pnpm build`, commit, and push the updated `dist/index.js` to GitHub. The CDN
+serves the latest `master` build automatically.
+
+### Google Maps setup
+
+The Origin & Destination autocomplete uses the Google Maps Places API. The
+Google Maps JS API script and its API key are **added separately in Webflow**
+(Project Settings → Custom Code → Head Code), not in this repository, so the
+key is never committed to source control:
+
+```html
+<script src="https://maps.googleapis.com/maps/api/js?key=YOUR_API_KEY&libraries=places"></script>
+```
+
+The code calls `google.maps.importLibrary('places')` and expects `google.maps`
+to already be loaded globally on the page. If the Maps script is missing, the
+autocomplete logs an error and the Origin/Destination fields simply won't
+suggest locations — the rest of the module still works.
 
 ---
 
 ## Deployment
 
-1. Create a changeset: `pnpm changeset`
-2. Commit and push your feature branch.
-3. Open a Pull Request and merge after review.
-4. The "Version Packages" PR bumps the version and updates the changelog.
-5. After merge, the bundle deploys to the CDN. Update the `VERSION` constant in
-   the Webflow loader script and republish.
+The bundle is served directly from the GitHub repo via a CDN — there is no
+separate build/deploy pipeline. To ship a change:
 
-See [DEPLOYMENT.md](DEPLOYMENT.md) for deployment configuration details.
+1. Build the production bundle: `pnpm build`
+2. Commit and push the updated `dist/index.js` to `master`.
+3. The CDN (githack/jsDelivr) serves the latest `master` build automatically.
+
+The CDN URL in Webflow points at `master`, so no version bump or republish is
+needed after a push. If you ever switch to a versioned URL (e.g. a git tag or
+commit hash), update the `<script src>` in Webflow's custom code accordingly.
 
 ---
 
