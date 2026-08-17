@@ -93,7 +93,18 @@ export async function initLocationAutocomplete() {
       }, 250);
     });
 
+    // Clicking the field with enough text already in it shows the suggestions
+    // immediately — no need to type again. fetchCitySuggestions renders the
+    // list and shows the dropdown once results arrive.
+    input.addEventListener('click', () => {
+      const query = input.value.trim();
+      if (query.length >= 2) {
+        fetchCitySuggestions(query);
+      }
+    });
+
     // Shared open/close/toggle + keyboard + outside-click behaviour.
+
     const dropdown = createDropdown({
       input,
       list: dropdownList,
