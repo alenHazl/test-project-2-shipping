@@ -207,15 +207,15 @@ pnpm format      # Prettier write
 ## Webflow Integration
 
 Add the built bundle to **Project Settings → Custom Code → Head Code** (or the
-page's custom code) as a `<script>` tag pointing at the CDN URL:
+page's custom code) as a `<script>` tag pointing at the jsDelivr CDN URL:
 
 ```html
-<script src="https://raw.githack.com/alenHazl/test-project-2-shipping/master/dist/index.js"></script>
+<script src="https://cdn.jsdelivr.net/gh/alenHazl/test-project-2-shipping@master/dist/index.js"></script>
 ```
 
-The bundle is served from the GitHub repo via a CDN, so after a change you must
-`pnpm build`, commit, and push the updated `dist/index.js` to GitHub. The CDN
-serves the latest `master` build automatically.
+The bundle is served from the GitHub repo via jsDelivr, so after a change you
+must `pnpm build`, commit, and push the updated `dist/index.js` to GitHub.
+jsDelivr caches the repo, so a fresh push can take a short while to appear.
 
 ### Google Maps setup
 
@@ -237,12 +237,13 @@ suggest locations — the rest of the module still works.
 
 ## Deployment
 
-The bundle is served directly from the GitHub repo via a CDN — there is no
+The bundle is served directly from the GitHub repo via jsDelivr — there is no
 separate build/deploy pipeline. To ship a change:
 
 1. Build the production bundle: `pnpm build`
 2. Commit and push the updated `dist/index.js` to `master`.
-3. The CDN (githack/jsDelivr) serves the latest `master` build automatically.
+3. jsDelivr serves the latest `master` build automatically (after its cache
+   refreshes).
 
 The CDN URL in Webflow points at `master`, so no version bump or republish is
 needed after a push. If you ever switch to a versioned URL (e.g. a git tag or
