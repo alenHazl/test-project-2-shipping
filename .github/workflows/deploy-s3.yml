@@ -1,0 +1,90 @@
+name: Deploy to S3 + CloudFront
+
+on:
+  push:
+    branches:
+      - master
+      - main
+      - staging
+
+permissions:
+  id-token: write # required for OIDC
+  contents: read
+
+env:
+  AWS_REGION: ${{ vars.AWS_REGION }}
+  AWS_OIDC_ROLE_ARN: ${{ vars.AWS_OIDC_ROLE_ARN }}
+  S3_BUCKET: ${{ vars.S3_BUCKET }}
+  CLOUDFRONT_DISTRIBUTION_ID: ${{ vars.CLOUDFRONT_DISTRIBUTION_ID }}
+  CACHE_CONTROL_DEFAULT: ${{ vars.CACHE_CONTROL_DEFAULT || 'public, max-age=31536000, immutable' }}
+
+jobs:
+  deploy:
+    # Only run if S3 deployment is enabled
+    if: vars.ENABLE_S3_DEPLOY == 'true'
+    environment: ${{ github.ref == 'refs/heads/main' && 'production' || github.ref == 'refs/heads/master' && 'production' || 'staging' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials via OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.AWS_OIDC_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-session-name: gha-deploy-${{ github.run_id }}
+
+      - name: Validate required configuration
+        run: |
+          : "${S3_BUCKET:=${{ env.S3_BUCKET }}}"
+          : "${DIST_ID:=${{ env.CLOUDFRONT_DISTRIBUTION_ID }}}"
+          if [ -z "$S3_BUCKET" ] || [ -z "$DIST_ID" ]; then
+            echo "S3_BUCKET and CLOUDFRONT_DISTRIBUTION_ID must be set via Variables." >&2
+            exit 1
+          fi
+          echo "Using bucket: $S3_BUCKET"
+          echo "Using distribution: $DIST_ID"
+
+      - name: Sync dist/ → S3
+        env:
+          CACHE_CONTROL_DEFAULT: ${{ env.CACHE_CONTROL_DEFAULT }}
+        run: |
+          set -euo pipefail
+          if [ ! -d "dist" ]; then
+            echo "dist/ directory not found." >&2
+            exit 1
+          fi
+
+          aws s3 sync ./dist "s3://$S3_BUCKET" \
+            --delete \
+            --only-show-errors \
+            --metadata-directive REPLACE \
+            --cache-control "$CACHE_CONTROL_DEFAULT"
+
+      - name: Sync assets/ → S3
+        if: hashFiles('assets/**') != ''
+        run: |
+          set -euo pipefail
+          if [ -d "assets" ]; then
+            echo "Uploading assets folder..."
+            aws s3 sync ./assets "s3://$S3_BUCKET/assets" \
+              --delete \
+              --only-show-errors \
+              --metadata-directive REPLACE \
+              --cache-control "public, max-age=31536000, immutable"
+            echo "✅ Assets uploaded successfully"
+          else
+            echo "No assets folder found, skipping..."
+          fi
+
+      - name: Invalidate CloudFront
+        run: |
+          set -euo pipefail
+          INVALIDATION_ID=$(aws cloudfront create-invalidation \
+            --distribution-id "${CLOUDFRONT_DISTRIBUTION_ID}" \
+            --paths "/*" \
+            --query 'Invalidation.Id' \
+            --output text)
+          echo "Created invalidation: $INVALIDATION_ID"
+          echo "✅ Deployment complete! Your files are now live on CloudFront."

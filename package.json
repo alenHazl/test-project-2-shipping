@@ -1,0 +1,59 @@
+{
+  "name": "rate-calculator-module",
+  "version": "0.0.0",
+  "description": "Rate calculator module for the cargo quote form — origin/destination autocomplete, cargo dropdown, date picker, transport checkboxes, validation, and URL construction.",
+  "license": "ISC",
+  "keywords": [
+    "webflow",
+    "rate-calculator",
+    "cargo",
+    "flatpickr",
+    "google-places"
+  ],
+  "author": {
+    "name": "Digital Sparks",
+    "url": "https://digital-sparks.com/"
+  },
+  "type": "module",
+  "main": "src/index.js",
+  "module": "src/index.js",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "dev": "cross-env NODE_ENV=development node ./bin/build.js",
+    "build": "cross-env NODE_ENV=production node ./bin/build.js",
+    "lint": "eslint ./src && prettier --check ./src",
+    "lint:fix": "eslint ./src --fix",
+    "check": "tsc --noEmit",
+    "format": "prettier --write ./src",
+    "release": "changeset publish",
+    "update": "pnpm update -i -L -r"
+  },
+  "devDependencies": {
+    "@changesets/changelog-git": "^0.2.0",
+    "@changesets/cli": "^2.27.12",
+    "@eslint/js": "^9.19.0",
+    "@finsweet/eslint-config": "^3.0.3",
+    "@finsweet/tsconfig": "^1.4.2",
+    "cross-env": "^7.0.3",
+    "esbuild": "^0.24.2",
+    "eslint": "^9.19.0",
+    "eslint-config-prettier": "^10.0.1",
+    "eslint-plugin-prettier": "^5.2.3",
+    "eslint-plugin-simple-import-sort": "^12.1.1",
+    "prettier": "^3.4.2",
+    "typescript": "^5.7.3",
+    "typescript-eslint": "^8.23.0"
+  },
+  "dependencies": {
+    "@finsweet/ts-utils": "^0.40.0",
+    "flatpickr": "^4.6.13"
+  },
+  "engines": {
+    "pnpm": ">=10"
+  },
+  "publishConfig": {
+    "provenance": true
+  }
+}
