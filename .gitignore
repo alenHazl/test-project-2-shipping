@@ -3,11 +3,9 @@ logs
 *.log
 npm-debug.log*
 
-# Build output
-dist/
-
 # Dependency directories
 node_modules/
+
 
 
 # TypeScript v1 declaration files
