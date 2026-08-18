@@ -83,19 +83,28 @@ module uses, so the validation and URL modules stay decoupled from the markup.
 
 #### Origin & Destination (location autocomplete)
 
-| Attribute               | Where it goes                                                                    | Purpose                                                                                                       |
-| ----------------------- | -------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
-| `data-location-field`   | The field container (the wrapper that holds the input, dropdown list, and error) | Scopes the field. The dropdown list and error must be **direct children** of this element.                    |
-| `data-location-input`   | The text `<input>`                                                               | The autocomplete target. Add `name="cargo_origin"` for Origin and `name="cargo_destination"` for Destination. |
-| `data-location-list`    | The dropdown list container                                                      | Holds the suggestion items.                                                                                   |
-| `data-location-item`    | A template item inside the list                                                  | Cloned once per suggestion.                                                                                   |
-| `data-location-city`    | A text element inside each item                                                  | Receives the city name.                                                                                       |
-| `data-location-country` | A text element inside each item                                                  | Receives the country name.                                                                                    |
+| Attribute               | Where it goes                                                                    | Purpose                                                                                                            |
+| ----------------------- | -------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| `data-location-field`   | The field container (the wrapper that holds the input, dropdown list, and error) | Scopes the field. The dropdown list and error must be **direct children** of this element.                         |
+| `data-location-input`   | The text `<input>`                                                               | The autocomplete target. Give it a `name` to make it a validated, synced, URL-included location field (see below). |
+| `data-location-list`    | The dropdown list container                                                      | Holds the suggestion items.                                                                                        |
+| `data-location-item`    | A template item inside the list                                                  | Cloned once per suggestion.                                                                                        |
+| `data-location-city`    | A text element inside each item                                                  | Receives the city name.                                                                                            |
+| `data-location-country` | A text element inside each item                                                  | Receives the country name.                                                                                         |
 
-> The error message for each location field is not part of the autocomplete
-> itself — it is wired up by the validation module. Use `data-field-error-origin`
-> on the Origin error element and `data-field-error-destination` on the
-> Destination error element (see the "Calculate button, form & errors" table).
+> **Location fields are fully dynamic.** Any `[data-location-input]` with a
+> `name` is automatically validated, synced between duplicated modules, and
+> included in the Calculate URL. The `name` follows the convention
+> `cargo_<key>` — the `<key>` is used to derive the error element and the URL
+> parameter:
+>
+> - `name="cargo_origin"` → error `[data-field-error-origin]` → URL param `origin`
+> - `name="cargo_destination"` → error `[data-field-error-destination]` → URL param `destination`
+> - `name="cargo_origin2"` → error `[data-field-error-origin2]` → URL param `origin2`
+>
+> So to add a new location field, just give it a unique `name` (e.g.
+> `name="cargo_origin2"`) and add a matching error element
+> (`data-field-error-origin2`). No code changes are needed.
 
 > If an item has neither `data-location-city` nor `data-location-country`, the
 > whole item's text is set to `"City, Country"`.
@@ -127,15 +136,14 @@ module uses, so the validation and URL modules stay decoupled from the markup.
 
 #### Calculate button, form & errors
 
-| Attribute                      | Where it goes                         | Purpose                                                                                    |
-| ------------------------------ | ------------------------------------- | ------------------------------------------------------------------------------------------ |
-| `data-calculate-button`        | The Calculate button (an `<a>`)       | The URL builder writes the constructed link to its `href`; validation enables/disables it. |
-| `data-rate-form`               | The `<form>` element                  | Its native submit is blocked so the module controls navigation.                            |
-| `data-field-error-origin`      | The Origin error message element      | Shown when Origin is invalid.                                                              |
-| `data-field-error-destination` | The Destination error message element | Shown when Destination is invalid.                                                         |
-| `data-field-error-cargo`       | The Cargo error message element       | Shown when Cargo is invalid.                                                               |
-| `data-field-error-date`        | The Date error message element        | Shown when Date is invalid.                                                                |
-| `data-field-error-transport`   | The Transport error message element   | Shown when no transport is selected.                                                       |
+| Attribute                    | Where it goes                            | Purpose                                                                                                                                                                                                                                 |
+| ---------------------------- | ---------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `data-calculate-button`      | The Calculate button (an `<a>`)          | The URL builder writes the constructed link to its `href`; validation enables/disables it.                                                                                                                                              |
+| `data-rate-form`             | The `<form>` element                     | Its native submit is blocked so the module controls navigation.                                                                                                                                                                         |
+| `data-field-error-<key>`     | A location field's error message element | Shown when that location field is invalid. The `<key>` matches the location input's `name` minus the `cargo_` prefix (e.g. `data-field-error-origin` for `name="cargo_origin"`, `data-field-error-origin2` for `name="cargo_origin2"`). |
+| `data-field-error-cargo`     | The Cargo error message element          | Shown when Cargo is invalid.                                                                                                                                                                                                            |
+| `data-field-error-date`      | The Date error message element           | Shown when Date is invalid.                                                                                                                                                                                                             |
+| `data-field-error-transport` | The Transport error message element      | Shown when no transport is selected.                                                                                                                                                                                                    |
 
 #### Optional debug helpers
 

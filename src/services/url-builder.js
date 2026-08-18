@@ -39,11 +39,14 @@
  *   [data-rate-form]        → the form element (its native submit is blocked)
  *
  * Field values are read from the SAME attributes the feature modules use:
- *   - Origin      → [data-location-input][name="cargo_origin"]
- *   - Destination → [data-location-input][name="cargo_destination"]
+ *   - Location fields → every [data-location-input] with a `name` is added as
+ *                       a URL param keyed by the name minus the `cargo_`
+ *                       prefix, e.g. name="cargo_origin" → origin,
+ *                       name="cargo_origin2" → origin2.
  *   - Date        → [data-date-input] (data-date-iso holds yyyy-MM-dd)
  *   - Transport   → getSelectedTransportModes(module) from ../features/transport-checkboxes.js
  *   - Cargo       → [data-cargo-select]
+
  *
  * This is reusable: every [data-calculate-button] is handled independently.
  * ============================================================================
@@ -141,14 +144,22 @@ function buildRedirectUrl(calculateButton, module) {
 
   const params = new URLSearchParams();
 
-  const origin = getFieldValue(module, '[data-location-input][name="cargo_origin"]');
-  const destination = getFieldValue(module, '[data-location-input][name="cargo_destination"]');
+  // Add every location field as a URL param, keyed by its name minus the
+  // `cargo_` prefix (e.g. name="cargo_origin" → origin, name="cargo_origin2" →
+  // origin2). This is fully dynamic — any [data-location-input] with a `name`
+  // is included.
+  module.querySelectorAll('[data-location-input]').forEach((input) => {
+    const name = input.getAttribute('name') || '';
+    const key = name.replace(/^cargo_/, '');
+    if (!key) return;
+    const value = input.value.trim();
+    if (value) params.set(key, value);
+  });
+
   const transportDate = getDateIso(module);
   const transportMode = getSelectedTransportModes(module);
   const containerType = getFieldValue(module, '[data-cargo-select]');
 
-  if (origin) params.set('origin', origin);
-  if (destination) params.set('destination', destination);
   if (transportDate) params.set('transportDate', transportDate);
   if (transportMode) params.set('transportMode', transportMode);
 

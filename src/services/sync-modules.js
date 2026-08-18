@@ -33,11 +33,14 @@
  *   [data-rate-module] → the module wrapper (add this attribute in Webflow)
  *
  * Field values are read from the SAME attributes the feature modules use:
- *   - Origin      → [data-location-input][name="cargo_origin"]
- *   - Destination → [data-location-input][name="cargo_destination"]
+ *   - Location fields → every [data-location-input] with a `name` is synced,
+ *                       keyed by the name minus the `cargo_` prefix (e.g.
+ *                       name="cargo_origin" → origin, name="cargo_origin2" →
+ *                       origin2).
  *   - Cargo       → [data-cargo-select] + [data-cargo-input] (display label)
  *   - Date        → [data-date-input] (data-date-iso holds yyyy-MM-dd)
  *   - Transport   → [data-transport-checkbox]
+
  *
  * NOTE: The date field is synced through the Flatpickr instance attached to
  * each input (input._flatpickr), so the calendar stays in sync too.
@@ -65,42 +68,47 @@ export function initModuleSync() {
   };
 
   modules.forEach((module) => {
-    wireLocation(module, 'cargo_origin', 'origin');
-    wireLocation(module, 'cargo_destination', 'destination');
+    wireLocations(module);
     wireCargo(module);
     wireDate(module);
     wireTransport(module);
   });
 
   /**
-   * Origin & Destination location inputs. Syncs on blur (the validation
-   * trigger) and immediately when a suggestion is picked (location-selected).
+   * Location inputs. Syncs on blur (the validation trigger) and immediately
+   * when a suggestion is picked (location-selected). Fully dynamic: every
+   * [data-location-input] with a `name` is synced, keyed by the name minus the
+   * `cargo_` prefix (e.g. name="cargo_origin" → origin, name="cargo_origin2" →
+   * origin2).
    */
-  function wireLocation(module, name, key) {
-    const input = module.querySelector(`[data-location-input][name="${name}"]`);
-    if (!input) return;
+  function wireLocations(module) {
+    module.querySelectorAll('[data-location-input]').forEach((input) => {
+      const name = input.getAttribute('name') || '';
+      const key = name.replace(/^cargo_/, '');
+      if (!key) return;
 
-    const sync = () => {
-      if (syncing) return;
-      syncing = true;
-      try {
-        state[key] = { value: input.value, valid: input.dataset.isValid === 'true' };
-        modules.forEach((m) => {
-          if (m === module) return;
-          const target = m.querySelector(`[data-location-input][name="${name}"]`);
-          if (!target || target === document.activeElement) return;
-          target.value = state[key].value;
-          target.dataset.isValid = state[key].valid ? 'true' : 'false';
-          // Notify the validation module so the target's button state updates.
-          target.dispatchEvent(new CustomEvent('location-selected', { bubbles: true }));
-        });
-      } finally {
-        syncing = false;
-      }
-    };
+      const sync = () => {
+        if (syncing) return;
+        syncing = true;
+        try {
+          state[key] = { value: input.value, valid: input.dataset.isValid === 'true' };
+          modules.forEach((m) => {
+            if (m === module) return;
+            const target = m.querySelector(`[data-location-input][name="${name}"]`);
+            if (!target || target === document.activeElement) return;
+            target.value = state[key].value;
+            target.dataset.isValid = state[key].valid ? 'true' : 'false';
+            // Notify the validation module so the target's button state updates.
+            target.dispatchEvent(new CustomEvent('location-selected', { bubbles: true }));
+          });
+        } finally {
+          syncing = false;
+        }
+      };
 
-    input.addEventListener('blur', sync);
-    input.addEventListener('location-selected', sync);
+      input.addEventListener('blur', sync);
+      input.addEventListener('location-selected', sync);
+    });
   }
 
   /**

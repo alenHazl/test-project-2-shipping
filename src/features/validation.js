@@ -30,11 +30,14 @@
  *
  * Each field is located by the SAME attributes its feature module already
  * uses. Each error message element is located by a field-specific attribute:
- *   - Origin      → [data-location-input][name="cargo_origin"]      + [data-field-error-origin]
- *   - Destination → [data-location-input][name="cargo_destination"] + [data-field-error-destination]
- *   - Cargo       → [data-cargo-select]                             + [data-field-error-cargo]
- *   - Date        → [data-date-input]                               + [data-field-error-date]
- *   - Transport   → [data-transport-checkbox]                       + [data-field-error-transport]
+ *   - Location fields → [data-location-input][name="cargo_<key>"] + [data-field-error-<key>]
+ *                       (any location input with a `name` is validated; the
+ *                        error element is derived by stripping the `cargo_`
+ *                        prefix, e.g. name="cargo_origin2" → [data-field-error-origin2])
+ *   - Cargo           → [data-cargo-select]                        + [data-field-error-cargo]
+ *   - Date            → [data-date-input]                          + [data-field-error-date]
+ *   - Transport       → [data-transport-checkbox]                  + [data-field-error-transport]
+
  *
  * The error text itself already lives in the HTML — this module only shows
  * and hides it (never creates it). Whenever a field is invalid, the `.is-error`
@@ -68,41 +71,13 @@ const DEFAULT_BLUR_CHECK_DELAY_MS = 100;
 // gives the dropdown interaction room to complete before the error shows.
 const LOCATION_BLUR_CHECK_DELAY_MS = 200;
 
-// Each field is located by the existing attributes its feature module uses.
+// Static configs for the non-location fields (cargo, date, transport). Each
+// config locates the field by the existing attributes its feature module uses:
 // `inputSelector` finds the field's input; `errorSelector` finds its error
 // message element; `isValid(module)` reads the field's validity flag from
 // within the module; `trigger` controls when the error + debug update
 // ('blur' or 'change').
-const FIELD_CONFIGS = [
-  {
-    name: 'origin',
-    inputSelector: '[data-location-input][name="cargo_origin"]',
-    errorSelector: '[data-field-error-origin]',
-    event: 'input',
-    trigger: 'blur',
-    // Defer the blur check so clicking the cargo dropdown button (which blurs
-    // this field) doesn't run validation immediately — see
-    // LOCATION_BLUR_CHECK_DELAY_MS.
-    deferBlurCheck: true,
-    blurCheckDelayMs: LOCATION_BLUR_CHECK_DELAY_MS,
-    isValid: (module) =>
-      module.querySelector('[data-location-input][name="cargo_origin"]')?.dataset.isValid ===
-      'true',
-  },
-  {
-    name: 'destination',
-    inputSelector: '[data-location-input][name="cargo_destination"]',
-    errorSelector: '[data-field-error-destination]',
-    event: 'input',
-    trigger: 'blur',
-    // Same deferred blur check as origin.
-    deferBlurCheck: true,
-    blurCheckDelayMs: LOCATION_BLUR_CHECK_DELAY_MS,
-    isValid: (module) =>
-      module.querySelector('[data-location-input][name="cargo_destination"]')?.dataset.isValid ===
-      'true',
-  },
-
+const STATIC_FIELD_CONFIGS = [
   {
     name: 'cargo',
     inputSelector: '[data-cargo-select]',
@@ -139,6 +114,50 @@ const FIELD_CONFIGS = [
   },
 ];
 
+/**
+ * Derives a validation config for each location input in a module. Location
+ * fields are fully dynamic: any [data-location-input] with a `name` is
+ * validated. The error element is derived from the name by stripping the
+ * `cargo_` prefix, e.g. name="cargo_origin" → [data-field-error-origin],
+ * name="cargo_origin2" → [data-field-error-origin2].
+ * @param {HTMLElement} module
+ * @returns {object[]}
+ */
+function getLocationFieldConfigs(module) {
+  return Array.from(module.querySelectorAll('[data-location-input]'))
+    .map((input) => {
+      const name = input.getAttribute('name') || '';
+      // Strip the "cargo_" prefix to get the error key (e.g. origin, origin2).
+      const key = name.replace(/^cargo_/, '');
+      if (!key) return null;
+      return {
+        name: key,
+        inputSelector: `[data-location-input][name="${name}"]`,
+        errorSelector: `[data-field-error-${key}]`,
+        event: 'input',
+        trigger: 'blur',
+        // Defer the blur check so clicking the cargo dropdown button (which
+        // blurs this field) doesn't run validation immediately — see
+        // LOCATION_BLUR_CHECK_DELAY_MS.
+        deferBlurCheck: true,
+        blurCheckDelayMs: LOCATION_BLUR_CHECK_DELAY_MS,
+        isValid: (module) =>
+          module.querySelector(`[data-location-input][name="${name}"]`)?.dataset.isValid === 'true',
+      };
+    })
+    .filter(Boolean);
+}
+
+/**
+ * Returns every field config for a module: the dynamic location configs plus
+ * the static cargo/date/transport configs.
+ * @param {HTMLElement} module
+ * @returns {object[]}
+ */
+function getFieldConfigs(module) {
+  return [...getLocationFieldConfigs(module), ...STATIC_FIELD_CONFIGS];
+}
+
 export function initValidation() {
   const modules = document.querySelectorAll('[data-rate-module]');
   modules.forEach((module) => initModuleValidation(module));
@@ -154,7 +173,7 @@ function initModuleValidation(module) {
 
   // On page load, hide every error message in this module and clear the
   // `.is-error` class from its inputs.
-  FIELD_CONFIGS.forEach((config) => {
+  getFieldConfigs(module).forEach((config) => {
     hideError(module.querySelector(config.errorSelector), getErrorInputs(module, config));
   });
 
@@ -177,7 +196,7 @@ function initModuleValidation(module) {
 
   // Re-evaluate the button's disabled state from this module's field validity.
   const updateButtonState = () => {
-    const allValid = FIELD_CONFIGS.every((config) => config.isValid(module));
+    const allValid = getFieldConfigs(module).every((config) => config.isValid(module));
     setButtonDisabled(!allValid);
   };
 
@@ -196,7 +215,7 @@ function initModuleValidation(module) {
   }
 
   // Wire up each field within this module.
-  FIELD_CONFIGS.forEach((config) => {
+  getFieldConfigs(module).forEach((config) => {
     const inputs = module.querySelectorAll(config.inputSelector);
     if (inputs.length === 0) return;
 
@@ -282,7 +301,7 @@ function initModuleValidation(module) {
 function validateAllFields(module) {
   const results = {};
 
-  FIELD_CONFIGS.forEach((config) => {
+  getFieldConfigs(module).forEach((config) => {
     const valid = config.isValid(module);
     results[config.name] = valid;
 
@@ -305,7 +324,7 @@ function validateAllFields(module) {
  */
 function readAllFieldStates(module) {
   const states = {};
-  FIELD_CONFIGS.forEach((config) => {
+  getFieldConfigs(module).forEach((config) => {
     states[config.name] = config.isValid(module);
   });
   return states;

@@ -73,10 +73,6 @@ export function initDatePicker() {
   const dateInputs = document.querySelectorAll('[data-date-input]');
 
   dateInputs.forEach((input) => {
-    // Webflow often styles readonly inputs with cursor: not-allowed. Force a
-    // pointer cursor so the field clearly invites a click to open the calendar.
-    input.style.cursor = 'pointer';
-
     flatpickr(input, {
       // Display the date as dd-MM-yyyy in the field.
       dateFormat: 'd-m-Y',
