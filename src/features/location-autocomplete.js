@@ -4,15 +4,15 @@
  * ============================================================================
  *
  * Implements the Origin and Destination fields:
- *   - Autocompletes locations using the Google Maps Places API.
-
+ *   - Autocompletes locations using the Google Maps Places API
+ *     (google.maps.places.AutocompleteSuggestion / Place).
  *   - After 2+ characters, shows a suggestion list of unique City, Country
  *     combinations (e.g. "Rotterdam, Netherlands").
  *   - Clicking a suggestion fills the field and closes the list.
  *   - A field is only valid when a suggestion was selected.
  *
- * Each prediction is resolved via the Place Details API to read its typed
- * address_components, so street addresses / zip codes / POIs all resolve to
+ * Each suggestion is resolved via the new Place API to read its typed
+ * addressComponents, so street addresses / zip codes / POIs all resolve to
  * a real City, Country.
  *
  * SELECTORS (attribute based, no hard-coded IDs):
@@ -36,26 +36,58 @@ export async function initLocationAutocomplete() {
   const locationInputs = document.querySelectorAll('[data-location-input]');
   if (locationInputs.length === 0) return;
 
-  let AutocompleteService, PlacesService, PlacesServiceStatus;
+  // Optional embedder configuration via window.RateModuleConfig:
+  //   { language: 'en', regionCode: 'uk', includedRegionCodes: ['uk'], maxSuggestions: 5 }
+  // language defaults to the browser's language (not passed to Google).
+  // regionCode biases results toward a country (e.g. 'uk', 'fr', 'de').
+  // includedRegionCodes strictly restricts results to the listed countries.
+  // maxSuggestions defaults to 5 (the API returns at most 5, so this can only
+  // reduce the count below 5, never raise it).
+  const config = window.RateModuleConfig || {};
+  const language = typeof config.language === 'string' ? config.language : undefined;
+  const regionCode = typeof config.regionCode === 'string' ? config.regionCode : undefined;
+  const includedRegionCodes = Array.isArray(config.includedRegionCodes)
+    ? config.includedRegionCodes.filter((c) => typeof c === 'string')
+    : undefined;
+  const maxSuggestions =
+    Number.isInteger(config.maxSuggestions) && config.maxSuggestions > 0
+      ? config.maxSuggestions
+      : 5;
+
+  // Uses the new google.maps.places API (AutocompleteSuggestion / Place),
+  // loaded via google.maps.importLibrary('places'). If the library fails to
+  // load, log an error and bail — the rest of the module still works.
+  let AutocompleteSuggestion, Place;
   try {
     const placesLib = await google.maps.importLibrary('places');
-    AutocompleteService = placesLib.AutocompleteService;
-    PlacesServiceStatus = placesLib.PlacesServiceStatus || google.maps.places.PlacesServiceStatus;
-    // PlacesService needs an attribution node — a detached div works fine,
-    // we never render anything into it.
-    PlacesService = new placesLib.PlacesService(document.createElement('div'));
+    AutocompleteSuggestion = placesLib.AutocompleteSuggestion;
+    Place = placesLib.Place;
   } catch (err) {
     console.error('Failed to initialize Google Places Autocomplete:', err);
     return;
   }
 
-  const autocompleteService = new AutocompleteService();
-
   locationInputs.forEach((input) => {
-    initLocationField(input, autocompleteService, PlacesService, PlacesServiceStatus);
+    initLocationField(
+      input,
+      AutocompleteSuggestion,
+      Place,
+      language,
+      regionCode,
+      includedRegionCodes,
+      maxSuggestions
+    );
   });
 
-  function initLocationField(input, autocompleteService, placesService, PlacesServiceStatus) {
+  function initLocationField(
+    input,
+    AutocompleteSuggestion,
+    Place,
+    language,
+    regionCode,
+    includedRegionCodes,
+    maxSuggestions
+  ) {
     // The [data-location-field] element is the wrapper. The dropdown list and
     // error are direct children of it.
 
@@ -120,65 +152,181 @@ export async function initLocationAutocomplete() {
       },
     });
 
-    function fetchCitySuggestions(query) {
+    // Builds the autocomplete request. Searches all place types (cities, zip
+    // codes, addresses, POIs...) so the user can type anything; each result is
+    // still resolved to a City, Country for display. Optionally:
+    //   - regionCode biases results toward a country. Note: the Maps JavaScript
+    //     API expects this as `region` (the Web Service REST API calls it
+    //     `regionCode`), so we map the config value to `region` here.
+    //   - includedRegionCodes strictly restricts results to the listed
+    //     countries.
+    // `withLanguage` controls whether the configured language is sent, so the
+    // fallback can retry without it if the API rejects it.
+    function buildAutocompleteRequest(query, withLanguage) {
+      return {
+        input: query,
+        ...(regionCode && { region: regionCode }),
+        ...(includedRegionCodes && includedRegionCodes.length > 0 && { includedRegionCodes }),
+        ...(withLanguage && language && { language }),
+      };
+    }
+
+    async function fetchCitySuggestions(query) {
       requestToken += 1;
       const token = requestToken;
 
-      const request = { input: query };
-
-      autocompleteService.getPlacePredictions(request, async (predictions, status) => {
-        if (status !== PlacesServiceStatus.OK || !predictions) {
+      // Try with the configured language first; if that fails (e.g. the API
+      // key doesn't support it), fall back to the browser's default language
+      // so the autocomplete never breaks.
+      let suggestions;
+      try {
+        const res = await AutocompleteSuggestion.fetchAutocompleteSuggestions(
+          buildAutocompleteRequest(query, true)
+        );
+        suggestions = res.suggestions;
+      } catch (err) {
+        if (language) {
+          console.error(
+            `Autocomplete failed with language "${language}", retrying without it:`,
+            err
+          );
+          try {
+            const res = await AutocompleteSuggestion.fetchAutocompleteSuggestions(
+              buildAutocompleteRequest(query, false)
+            );
+            suggestions = res.suggestions;
+          } catch (err2) {
+            console.error('Failed to fetch autocomplete suggestions:', err2);
+            dropdown.hide();
+            return;
+          }
+        } else {
+          console.error('Failed to fetch autocomplete suggestions:', err);
           dropdown.hide();
           return;
         }
+      }
 
-        // Cap how many we resolve to details — each one is a billed call.
-        const candidates = predictions.slice(0, 5);
+      // Bail if a newer keystroke has already started a new request.
+      if (token !== requestToken) return;
 
-        const resolved = await Promise.all(
-          candidates.map((p) => getCityCountryFromPlaceId(p.place_id))
-        );
+      if (!suggestions || suggestions.length === 0) {
+        dropdown.hide();
+        return;
+      }
 
-        // Bail if a newer keystroke has already started a new request.
-        if (token !== requestToken) return;
+      // Cap how many we resolve to details — each one is a billed call.
+      const candidates = suggestions.slice(0, maxSuggestions);
 
-        const uniqueLocations = [];
-        const seen = new Set();
-
-        resolved.forEach((loc) => {
-          if (!loc) return;
-          const key = `${loc.city}-${loc.country}`.toLowerCase();
-          if (!seen.has(key)) {
-            seen.add(key);
-            uniqueLocations.push(loc);
-          }
-        });
-
-        renderSuggestions(uniqueLocations);
+      // Dedupe by place ID first. When both regionCode and includedRegionCodes
+      // are set, the API can return the same place multiple times (e.g. once as
+      // a city prediction and once as a broader region prediction). placeId is
+      // the canonical unique identifier, so this prevents resolving (and
+      // billing) the same place twice.
+      const seenIds = new Set();
+      const uniqueCandidates = [];
+      candidates.forEach((s) => {
+        const id = s.placePrediction?.placeId;
+        if (id && !seenIds.has(id)) {
+          seenIds.add(id);
+          uniqueCandidates.push(s);
+        }
       });
+
+      const resolved = await Promise.all(
+        uniqueCandidates.map((s) =>
+          getCityCountryFromPlaceId(
+            s.placePrediction.placeId,
+            s.placePrediction.text?.text,
+            s.placePrediction.structuredFormat
+          )
+        )
+      );
+
+      // Bail if a newer keystroke has already started a new request.
+      if (token !== requestToken) return;
+
+      // Secondary safety net: collapse any distinct place IDs that resolve to
+      // the same City, Country.
+      const uniqueLocations = [];
+      const seen = new Set();
+
+      resolved.forEach((loc) => {
+        if (!loc) return;
+        const key = `${loc.city}-${loc.country}`.toLowerCase();
+        if (!seen.has(key)) {
+          seen.add(key);
+          uniqueLocations.push(loc);
+        }
+      });
+
+      renderSuggestions(uniqueLocations);
     }
 
-    // Resolve a place_id to a real, typed city + country via address_components.
-    function getCityCountryFromPlaceId(placeId) {
-      return new Promise((resolve) => {
-        placesService.getDetails({ placeId, fields: ['address_components'] }, (result, status) => {
-          if (status !== PlacesServiceStatus.OK || !result?.address_components) {
-            resolve(null);
-            return;
+    // Resolve a place_id to a real, typed city + country.
+    //
+    // Prefers the suggestion's `structuredFormat` (mainText = city,
+    // secondaryText = country), which is returned in the requested language and
+    // needs no extra API call. Falls back to the suggestion's full text for the
+    // country, and finally to the Place API's addressComponents for the city.
+    // fetchFields does NOT accept a `language` parameter, so its address
+    // components follow the Maps script tag / browser language — hence it's only
+    // used as a last resort.
+    async function getCityCountryFromPlaceId(placeId, suggestionText, structuredFormat) {
+      let city = null;
+      let country = null;
+
+      // 1) structuredFormat — cleanest, no extra API call.
+      if (structuredFormat) {
+        city = structuredFormat.mainText?.text || null;
+        const secondary = structuredFormat.secondaryText?.text;
+        if (secondary) country = extractCountryFromText(secondary);
+      }
+
+      // 2) Fall back to the full suggestion text for the country.
+      if (!country && suggestionText) {
+        country = extractCountryFromText(suggestionText);
+      }
+
+      // 3) Last resort: resolve the city via the Place API.
+      if (!city) {
+        try {
+          const place = new Place({ id: placeId });
+          await place.fetchFields({ fields: ['addressComponents'] });
+          if (place.addressComponents) {
+            const structured = extractCityCountry(place.addressComponents);
+            if (structured) {
+              city = structured.city;
+              if (!country) country = structured.country;
+            }
           }
-          resolve(extractCityCountry(result.address_components));
-        });
-      });
+        } catch (err) {
+          console.error('Failed to fetch place details:', err);
+        }
+      }
+
+      if (!city || !country) return null;
+      return { city, country };
+    }
+
+    // Pulls the country out of a suggestion's display text, e.g.
+    // "London, UK" → "UK", "New York, NY, USA" → "USA". The country is the
+    // segment after the last comma. Returns null if there's no comma.
+    function extractCountryFromText(text) {
+      const lastComma = text.lastIndexOf(',');
+      if (lastComma === -1) return null;
+      const country = text.slice(lastComma + 1).trim();
+      return country || null;
     }
 
     /**
-     * Reads the typed address_components Google returns for ANY place
+     * Reads the typed addressComponents Google returns for ANY place
      * (city, postal code, street address, POI...) and pulls out a real
      * city + country. Falls back through broader locality types when a
      * precise 'locality' isn't present (common for rural addresses).
      */
     function extractCityCountry(components) {
-      const findType = (type) => components.find((c) => c.types.includes(type))?.long_name || null;
+      const findType = (type) => components.find((c) => c.types.includes(type))?.longText || null;
 
       const city =
         findType('locality') ||

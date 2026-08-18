@@ -228,10 +228,59 @@ key is never committed to source control:
 <script src="https://maps.googleapis.com/maps/api/js?key=YOUR_API_KEY&libraries=places"></script>
 ```
 
-The code calls `google.maps.importLibrary('places')` and expects `google.maps`
-to already be loaded globally on the page. If the Maps script is missing, the
-autocomplete logs an error and the Origin/Destination fields simply won't
-suggest locations — the rest of the module still works.
+The code uses the new `google.maps.places.AutocompleteSuggestion` and
+`google.maps.places.Place` APIs, loaded via `google.maps.importLibrary('places')`.
+It expects `google.maps` to already be loaded globally on the page. If the Maps
+script is missing, the autocomplete logs an error and the Origin/Destination
+fields simply won't suggest locations — the rest of the module still works.
+
+> **Note:** The new Places API requires the **Places API (New)** to be enabled
+> in the Google Cloud Console for the API key. The legacy `libraries=places`
+> script tag is no longer used — the Places library is loaded dynamically via
+> `importLibrary('places')`.
+
+#### Optional configuration
+
+By default the autocomplete uses the **browser's language** and shows up to
+**5 suggestions**. You can type any place (city, zip code, address, POI) and
+every suggestion is resolved to a **City, Country** for display. To override
+the defaults, add a small config script **below** the bundle script tag:
+
+```html
+<script src="https://cdn.jsdelivr.net/gh/alenHazl/test-project-2-shipping@master/dist/index.js"></script>
+<script>
+  window.RateModuleConfig = {
+    language: 'en', // optional — defaults to the browser's language
+    regionCode: 'uk', // optional — biases results toward a country
+    includedRegionCodes: ['uk'], // optional — strictly limits results to these countries
+    maxSuggestions: 3, // optional — defaults to 5
+  };
+</script>
+```
+
+- `language` — a [BCP-47 language tag](https://developers.google.com/maps/faq#languagesupport)
+  (e.g. `'en'`, `'sl'`, `'de'`). When omitted, Google returns results in the
+  browser's language. This controls the **suggestion text** shown in the
+  dropdown, including the country name (e.g. `'en'` shows "London, UK" rather
+  than the browser-localized "London, Združeno kraljestvo").
+
+- `regionCode` — a two-character [ccTLD](https://en.wikipedia.org/wiki/Country_code_top-level_domain)
+  code (e.g. `'uk'`, `'fr'`, `'de'`, `'si'`) that **biases** results toward that
+  country (nearby results from other countries may still appear). When omitted,
+  no region bias is applied. (Internally this is sent to the Maps JavaScript API
+  as `region`, which is that API's name for the same parameter.)
+
+- `includedRegionCodes` — an array of two-character
+  [ccTLD](https://en.wikipedia.org/wiki/Country_code_top-level_domain) codes
+  (e.g. `['si']`, `['uk', 'fr']`) that **strictly restricts** results to only
+  those countries. Results from any other country are excluded. When omitted,
+  no country restriction is applied. Use this instead of `regionCode` when you
+  want a hard filter rather than a bias.
+
+- `maxSuggestions` — a positive integer capping how many suggestions are shown.
+  When omitted, defaults to `5`. **Important:** the Places API returns at most
+  **5** suggestions, so this can only be set to show **fewer** than 5 — it can
+  never show more than the API returns.
 
 ---
 
