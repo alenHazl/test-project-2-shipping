@@ -23,9 +23,9 @@
  *   [data-cargo-item]    → the template item cloned for each option
  *   [data-cargo-text]    → the option label text element
  *   [data-cargo-value]   → the option value text element
- *   [data-cargo-chevron] → the chevron icon (also toggles the dropdown)
  *
  * This is reusable: every [data-cargo-field] is initialized independently.
+
  * ============================================================================
  */
 
@@ -37,8 +37,8 @@ export function initCargoDropdown() {
   fields.forEach((field) => {
     const input = field.querySelector('[data-cargo-input]');
     const select = field.querySelector('[data-cargo-select]');
-    const chevron = field.querySelector('[data-cargo-chevron]');
     const dropdownList = field.querySelector('[data-cargo-list]');
+
     const templateItem = dropdownList ? dropdownList.querySelector('[data-cargo-item]') : null;
 
     if (!input || !select || !dropdownList || !templateItem) return;
@@ -112,14 +112,6 @@ export function initCargoDropdown() {
       select.dataset.isValid = 'false';
       select.dispatchEvent(new Event('change', { bubbles: true }));
     });
-
-    // Clicking the chevron also toggles the dropdown.
-    if (chevron) {
-      chevron.addEventListener('click', (e) => {
-        e.stopPropagation();
-        dropdown.toggle();
-      });
-    }
 
     // Close the dropdown when clicking outside the field.
     dropdown.bindOutsideClick(field);

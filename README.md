@@ -102,16 +102,15 @@ module uses, so the validation and URL modules stay decoupled from the markup.
 
 #### Cargo type dropdown
 
-| Attribute            | Where it goes                   | Purpose                                        |
-| -------------------- | ------------------------------- | ---------------------------------------------- |
-| `data-cargo-field`   | The field container             | Scopes the dropdown (outside-click detection). |
-| `data-cargo-input`   | The visible text `<input>`      | Display + click target.                        |
-| `data-cargo-select`  | A hidden `<select>`             | Holds the option values and validity.          |
-| `data-cargo-list`    | The dropdown list container     | Holds the option items.                        |
-| `data-cargo-item`    | A template item inside the list | Cloned once per option.                        |
-| `data-cargo-text`    | A text element inside each item | The option label.                              |
-| `data-cargo-value`   | A text element inside each item | The option value.                              |
-| `data-cargo-chevron` | The chevron icon                | Also toggles the dropdown.                     |
+| Attribute           | Where it goes                   | Purpose                                        |
+| ------------------- | ------------------------------- | ---------------------------------------------- |
+| `data-cargo-field`  | The field container             | Scopes the dropdown (outside-click detection). |
+| `data-cargo-input`  | The visible text `<input>`      | Display + click target.                        |
+| `data-cargo-select` | A hidden `<select>`             | Holds the option values and validity.          |
+| `data-cargo-list`   | The dropdown list container     | Holds the option items.                        |
+| `data-cargo-item`   | A template item inside the list | Cloned once per option.                        |
+| `data-cargo-text`   | A text element inside each item | The option label.                              |
+| `data-cargo-value`  | A text element inside each item | The option value.                              |
 
 #### Ready Date (date picker)
 
@@ -121,10 +120,10 @@ module uses, so the validation and URL modules stay decoupled from the markup.
 
 #### Transport checkboxes
 
-| Attribute                 | Where it goes                               | Purpose                                               |
-| ------------------------- | ------------------------------------------- | ----------------------------------------------------- |
-| `data-transport-checkbox` | Each checkbox `<input>` (Sea / Air / Train) | Marks a transport option.                             |
-| `data-transport-value`    | On each checkbox                            | The URL value for that option (`sea`, `air`, `rail`). |
+| Attribute                 | Where it goes                               | Purpose                                                                                                                                                  |
+| ------------------------- | ------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `data-transport-checkbox` | Each checkbox `<input>` (Sea / Air / Train) | Marks a transport option.                                                                                                                                |
+| `data-transport-value`    | On each checkbox                            | The URL value **on the attribute itself**, e.g. `data-transport-value="sea"` for Sea, `"air"` for Air, `"rail"` for Train. Sent in the URL when checked. |
 
 #### Calculate button, form & errors
 
