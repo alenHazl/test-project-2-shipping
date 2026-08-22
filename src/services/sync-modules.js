@@ -17,9 +17,11 @@
  *   - All field data is stored in a shared `state` object.
  *   - On the same triggers the validation module uses for its error stats:
  *       origin / destination → blur (and immediately on suggestion pick)
- *       cargo                → change
- *       date                 → change (and blur)
+ *       cargo                → blur (and change)
+ *       date                 → blur (and change)
  *       transport            → change
+
+
  *   - When a field changes in one instance, its value is written to `state`,
  *     then propagated to the same field in every other instance.
  *
@@ -112,7 +114,9 @@ export function initModuleSync() {
   }
 
   /**
-   * Cargo field. Syncs on change (the validation trigger). Updates both the
+   * Cargo field. Syncs on change (when an option is selected) and on blur
+   * (matching the validation trigger), so leaving the field without selecting
+   * propagates the invalid state to the other instances. Updates both the
    * hidden select value and the display input label.
    */
   function wireCargo(module) {
@@ -138,7 +142,12 @@ export function initModuleSync() {
           targetSelect.dataset.isValid = state.cargo.valid ? 'true' : 'false';
           if (targetDisplay) targetDisplay.value = state.cargo.label;
           // Notify the validation module so the target's button state updates.
-          targetSelect.dispatchEvent(new Event('change', { bubbles: true }));
+          // A custom event (not `change`) is used because cargo is blur-triggered
+          // in validation: its `change` handler always hides the error, so a
+          // synced invalid value would never show its error. The validation
+          // module listens for `cargo-synced` and shows/hides based on the
+          // field's actual validity.
+          targetSelect.dispatchEvent(new CustomEvent('cargo-synced', { bubbles: true }));
         });
       } finally {
         syncing = false;
@@ -146,6 +155,16 @@ export function initModuleSync() {
     };
 
     select.addEventListener('change', sync);
+
+    // Sync on blur too (the validation trigger), so leaving the field without
+    // selecting propagates the invalid state to the other instances. The blur
+    // must attach to the visible input (which receives focus), not the hidden
+    // select (which never blurs). Deferred so clicking a dropdown option (which
+    // blurs the input before the click handler selects the value) doesn't
+    // propagate a stale empty value before the selection registers.
+    if (display) {
+      display.addEventListener('blur', () => setTimeout(sync, 200));
+    }
   }
 
   /**
@@ -178,7 +197,12 @@ export function initModuleSync() {
           target.dataset.dateIso = state.date.iso;
           target.dataset.isValid = state.date.valid ? 'true' : 'false';
           // Notify the validation module so the target's button state updates.
-          target.dispatchEvent(new Event('change', { bubbles: true }));
+          // A custom event (not `change`) is used because date is blur-triggered
+          // in validation: its `change` handler always hides the error, so a
+          // synced invalid value would never show its error. The validation
+          // module listens for `date-synced` and shows/hides based on the
+          // field's actual validity.
+          target.dispatchEvent(new CustomEvent('date-synced', { bubbles: true }));
         });
       } finally {
         syncing = false;
@@ -186,7 +210,13 @@ export function initModuleSync() {
     };
 
     input.addEventListener('change', sync);
-    input.addEventListener('blur', sync);
+
+    // Sync on blur too (the validation trigger), so leaving the field without
+    // picking a date propagates the invalid state to the other instances.
+    // Deferred so clicking a calendar day (which blurs the input before
+    // Flatpickr's click handler selects the date) doesn't propagate a stale
+    // empty value before the selection registers.
+    input.addEventListener('blur', () => setTimeout(sync, 200));
   }
 
   /**

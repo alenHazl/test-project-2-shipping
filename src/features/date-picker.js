@@ -89,7 +89,8 @@ export function initDatePicker() {
         // Notify the validation module immediately. Dispatching `change` here
         // (after data-is-valid is set) guarantees the error hides the moment a
         // valid date is picked, regardless of Flatpickr's internal event
-        // ordering. The validation module validates the date field on `change`.
+        // ordering. The validation module validates the date field on blur, but
+        // clears the error on `change` (when a valid date is picked).
         input.dispatchEvent(new Event('change', { bubbles: true }));
       },
     });

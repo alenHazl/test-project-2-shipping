@@ -46,6 +46,23 @@ export function wireComboboxKeyboard(opts) {
   if (listId) input.setAttribute('aria-controls', listId);
   list.setAttribute('role', 'listbox');
 
+  // Scrolls the list container (which has a max-height + overflow-y: auto) so
+  // the given item is fully visible. Only the list is scrolled — not the page —
+  // by adjusting list.scrollTop directly based on the item's position relative
+  // to the list's visible area. If the item is already fully visible, nothing
+  // happens.
+  const scrollItemIntoView = (item) => {
+    const listRect = list.getBoundingClientRect();
+    const itemRect = item.getBoundingClientRect();
+    if (itemRect.top < listRect.top) {
+      // Item is above the visible area — scroll up.
+      list.scrollTop -= listRect.top - itemRect.top;
+    } else if (itemRect.bottom > listRect.bottom) {
+      // Item is below the visible area — scroll down.
+      list.scrollTop += itemRect.bottom - listRect.bottom;
+    }
+  };
+
   const setHighlight = (index) => {
     const items = getItems();
     highlightedIndex = index;
@@ -55,6 +72,9 @@ export function wireComboboxKeyboard(opts) {
       if (active) {
         item.style.backgroundColor = '#e6f0ff';
         if (item.id) input.setAttribute('aria-activedescendant', item.id);
+        // Keep the highlighted item fully visible when navigating with the
+        // arrow keys (the list scrolls, so a hidden item is brought into view).
+        scrollItemIntoView(item);
       } else {
         item.style.backgroundColor = '';
       }

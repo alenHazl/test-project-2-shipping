@@ -128,14 +128,22 @@ function initModuleUrlBuilder(module) {
     input.addEventListener('location-selected', refreshUrl);
   });
 
-  // Date input (fires when a date is picked).
-  module
-    .querySelectorAll('[data-date-input]')
-    .forEach((input) => input.addEventListener('change', refreshUrl));
-  // Cargo select.
-  module
-    .querySelectorAll('[data-cargo-select]')
-    .forEach((select) => select.addEventListener('change', refreshUrl));
+  // Date input. Refresh on `change` (when a date is picked) and on the custom
+  // `date-synced` event (when the sync module propagates a value to another
+  // instance), so the URL debug stays in sync on every module.
+  module.querySelectorAll('[data-date-input]').forEach((input) => {
+    input.addEventListener('change', refreshUrl);
+    input.addEventListener('date-synced', refreshUrl);
+  });
+
+  // Cargo select. Refresh on `change` (when an option is picked) and on the
+  // custom `cargo-synced` event (when the sync module propagates a value to
+  // another instance), so the URL debug stays in sync on every module.
+  module.querySelectorAll('[data-cargo-select]').forEach((select) => {
+    select.addEventListener('change', refreshUrl);
+    select.addEventListener('cargo-synced', refreshUrl);
+  });
+
   // Transport checkboxes.
   module
     .querySelectorAll('[data-transport-checkbox]')

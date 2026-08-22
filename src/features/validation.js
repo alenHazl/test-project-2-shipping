@@ -8,7 +8,10 @@
 
  *   - Error messages and the debug paragraph update on the same trigger:
  *       - Origin / Destination → on blur or Calculate press.
- *       - Cargo / Date / Transport → on change (instantly).
+ *       - Cargo / Date → on blur (or Calculate press); clears on change.
+ *       - Transport → on change (instantly).
+
+
 
  *
  *   - The Calculate button is never disabled. Its `data-valid` attribute
@@ -74,6 +77,18 @@ const DEFAULT_BLUR_CHECK_DELAY_MS = 100;
 // gives the dropdown interaction room to complete before the error shows.
 const LOCATION_BLUR_CHECK_DELAY_MS = 200;
 
+// Delay for the cargo field's deferred blur check. Clicking a dropdown option
+// blurs the input before the click handler selects the value, so validating
+// synchronously on blur would flash a false error. Deferring it by 200ms gives
+// the selection time to register before the error shows.
+const CARGO_BLUR_CHECK_DELAY_MS = 200;
+
+// Delay for the date field's deferred blur check. Clicking a calendar day blurs
+// the input before Flatpickr's click handler selects the date, so validating
+// synchronously on blur would flash a false error. Deferring it by 200ms gives
+// the selection time to register before the error shows.
+const DATE_BLUR_CHECK_DELAY_MS = 200;
+
 // Static configs for the non-location fields (cargo, date, transport). Each
 // config locates the field by the existing attributes its feature module uses:
 // `inputSelector` finds the field's input; `errorSelector` finds its error
@@ -88,22 +103,38 @@ const STATIC_FIELD_CONFIGS = [
     // [data-cargo-select] is only used for the value + validity. The `.is-error`
     // class must go on the visible input.
     errorInputSelector: '[data-cargo-input]',
+    // The blur listener must attach to the visible input (which actually
+    // receives focus), not the hidden select (which never blurs).
+    blurInputSelector: '[data-cargo-input]',
     errorSelector: '[data-field-error-cargo]',
     event: 'change',
-    trigger: 'change',
+    // Validate on blur (not change): the error appears when the user leaves the
+    // field without picking an option, and clears as soon as a valid option is
+    // selected (change).
+    trigger: 'blur',
+    // Defer the blur check so clicking a dropdown option (which blurs the input
+    // before the click handler selects the value) doesn't flash a false error.
+    deferBlurCheck: true,
+    blurCheckDelayMs: CARGO_BLUR_CHECK_DELAY_MS,
     isValid: (module) => module.querySelector('[data-cargo-select]')?.dataset.isValid === 'true',
   },
+
   {
     name: 'date',
     inputSelector: '[data-date-input]',
     errorSelector: '[data-field-error-date]',
     event: 'change',
-    // Validate on change (not blur). Flatpickr fires a native `change` event
-    // on the input AFTER it sets data-is-valid in its onChange, so the error
-    // hides the moment a valid date is picked. Validating on blur instead
-    // caused a race: the blur fired before Flatpickr marked the field valid,
-    // so a correct date could briefly flash a false error.
-    trigger: 'change',
+    // Validate on blur (not change): the error appears when the user leaves the
+    // field without picking a date, and clears as soon as a valid date is picked
+    // (change). Flatpickr fires a native `change` event on the input AFTER it
+    // sets data-is-valid in its onChange, so the error hides the moment a valid
+    // date is picked.
+    trigger: 'blur',
+    // Defer the blur check so clicking a calendar day (which blurs the input
+    // before Flatpickr's click handler selects the date) doesn't flash a false
+    // error.
+    deferBlurCheck: true,
+    blurCheckDelayMs: DATE_BLUR_CHECK_DELAY_MS,
     isValid: (module) => module.querySelector('[data-date-input]')?.dataset.isValid === 'true',
   },
 
@@ -218,7 +249,12 @@ function initModuleValidation(module, allModules) {
       // invalid) and disappears as soon as the value changes (typing or picking
       // a suggestion), regardless of validity. It reappears on blur if still
       // invalid.
-      inputs.forEach((input) => {
+      // The blur listener attaches to the element(s) that actually receive
+      // focus. For most fields this is the same as `inputSelector`, but a
+      // config may override it (e.g. cargo's visible [data-cargo-input] instead
+      // of the hidden [data-cargo-select], which never blurs).
+      const blurInputs = module.querySelectorAll(config.blurInputSelector || config.inputSelector);
+      blurInputs.forEach((input) => {
         input.addEventListener('blur', () => {
           // For fields that set their validity in a picker's onChange (which
           // fires after the blur), defer the check so the picker marks the
@@ -268,9 +304,47 @@ function initModuleValidation(module, allModules) {
             updateDebug(debugEl, readAllFieldStates(module));
           });
         }
+
+        // Cargo's hidden select receives a custom 'cargo-synced' event when the
+        // sync module propagates a value to another instance (which may be valid
+        // or invalid). Show/hide the error based on the field's actual validity
+        // so a synced invalid value correctly shows its error on the other
+        // components (the target input is never focused, so it would never blur
+        // and never show the error otherwise). Refresh the button validity and
+        // debug right away.
+        if (input.hasAttribute('data-cargo-select')) {
+          input.addEventListener('cargo-synced', () => {
+            if (config.isValid(module)) {
+              hideError(errorEl, getErrorInputs(module, config));
+            } else {
+              showError(errorEl, getErrorInputs(module, config));
+            }
+            updateButtonValidity();
+            updateDebug(debugEl, readAllFieldStates(module));
+          });
+        }
+
+        // The date input receives a custom 'date-synced' event when the sync
+        // module propagates a value to another instance (which may be valid or
+        // invalid). Show/hide the error based on the field's actual validity so
+        // a synced invalid value correctly shows its error on the other
+        // components (the target input is never focused, so it would never blur
+        // and never show the error otherwise). Refresh the button validity and
+        // debug right away.
+        if (input.hasAttribute('data-date-input')) {
+          input.addEventListener('date-synced', () => {
+            if (config.isValid(module)) {
+              hideError(errorEl, getErrorInputs(module, config));
+            } else {
+              showError(errorEl, getErrorInputs(module, config));
+            }
+            updateButtonValidity();
+            updateDebug(debugEl, readAllFieldStates(module));
+          });
+        }
       });
     } else {
-      // Change-triggered fields (cargo, transport): show/hide the error,
+      // Change-triggered fields (date, transport): show/hide the error,
       // update the debug, and refresh the button validity on change.
       const onFieldChange = () => {
         if (config.isValid(module)) {
