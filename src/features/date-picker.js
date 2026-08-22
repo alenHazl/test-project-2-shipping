@@ -41,16 +41,12 @@ import { flatpickrCss } from '../styles/flatpickr-css.js';
 
 // Custom overrides appended to the Flatpickr stylesheet:
 //   - Text color #002d28 (brand dark teal) for the calendar text.
-//   - Hide the year selector (only the month is shown in the header).
 //   - Square corners (no border radius) and a cut-corner highlight on the
 //     selected day, matching the design system.
 const flatpickrOverrides = `
 .flatpickr-months .flatpickr-month{color:#002d28}
-.flatpickr-current-month{color:#002d28;width:auto;left:50%;transform:translateX(-50%)}
-.flatpickr-current-month input.cur-year{color:#002d28;display:none}
-.flatpickr-current-month .flatpickr-monthDropdown-months{color:#002d28}
-.flatpickr-current-month .flatpickr-monthDropdown-months .flatpickr-monthDropdown-month:hover{background:#39f2af}
 .flatpickr-day{color:#002d28}
+
 span.flatpickr-weekday{color:#002d28}
 .flatpickr-calendar{border-radius:0}
 .flatpickr-day.selected,.flatpickr-day.startRange,.flatpickr-day.endRange,.flatpickr-day.selected.inRange,.flatpickr-day.startRange.inRange,.flatpickr-day.endRange.inRange,.flatpickr-day.selected:focus,.flatpickr-day.startRange:focus,.flatpickr-day.endRange:focus,.flatpickr-day.selected:hover,.flatpickr-day.startRange:hover,.flatpickr-day.endRange:hover,.flatpickr-day.selected.prevMonthDay,.flatpickr-day.startRange.prevMonthDay,.flatpickr-day.endRange.prevMonthDay,.flatpickr-day.selected.nextMonthDay,.flatpickr-day.startRange.nextMonthDay,.flatpickr-day.endRange.nextMonthDay{border-radius:0;background:#39f2af;color:#002d28;border-color:#39f2af;--corner-size:8px;clip-path:polygon(0 0,calc(100% - var(--corner-size)) 0,100% var(--corner-size),100% 100%,var(--corner-size) 100%,0 calc(100% - var(--corner-size)))}

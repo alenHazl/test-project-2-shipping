@@ -45,18 +45,37 @@ export function initTransportCheckboxes() {
     checkboxes.forEach((checkbox) => {
       // The checkbox input is visually hidden (opacity: 0), so keyboard focus
       // on it is invisible. Show a focus ring on the label so keyboard users
-      // can see where they are when tabbing through the options.
+      // can see where they are when tabbing through the options. A neutral
+      // gray is used so the ring reads as a focus indicator, not a checked
+      // state (a bright color would look like the box is selected).
+      //
+      // The ring only shows for keyboard navigation: `:focus-visible` matches
+      // only when focus comes from the keyboard (Tab), not from a mouse click,
+      // so the outline doesn't flash when a checkbox is clicked.
       const label = checkbox.closest('label');
       if (label) {
         checkbox.addEventListener('focus', () => {
-          label.style.outline = '2px solid #39f2af';
-          label.style.outlineOffset = '2px';
+          if (checkbox.matches(':focus-visible')) {
+            label.style.outline = '2px solid #9ca3af';
+            label.style.outlineOffset = '2px';
+          }
         });
         checkbox.addEventListener('blur', () => {
           label.style.outline = '';
           label.style.outlineOffset = '';
         });
       }
+
+      // Space already toggles the checkbox natively; also let Enter toggle it.
+      // Setting .checked manually doesn't fire a native change event, so
+      // dispatch one so validation and the URL builder stay in sync.
+      checkbox.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          checkbox.checked = !checkbox.checked;
+          checkbox.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+      });
     });
   });
 }

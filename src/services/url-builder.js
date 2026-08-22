@@ -72,8 +72,37 @@ function initModuleUrlBuilder(module) {
   const calculateButton = module.querySelector('[data-calculate-button]');
   if (!calculateButton) return;
 
+  // Ensure the Calculate button is always in the tab order. It's an <a> with a
+  // valid href, but the module's cut-corner clip-path (and duplicate IDs when
+  // the module is duplicated on a page) can cause the browser to skip it on the
+  // first tab pass. Explicitly setting tabindex="0" forces it into the tab
+  // order so keyboard users can always reach it.
+  calculateButton.setAttribute('tabindex', '0');
+
   const debugEl = module.querySelector('[data-url-debug]');
   const form = module.querySelector('[data-rate-form]');
+
+  // The Calculate button is an <a> whose cut-corner design uses `clip-path`,
+  // which clips any outline/box-shadow applied directly to the button. So the
+  // focus ring is drawn on the button's parent wrapper instead (the embedder
+  // wraps the button in a container). A neutral blue ring is used — clearly
+  // visible but not garish — and set with !important so it can't be suppressed
+  // by Webflow's own styles.
+  //
+  // The ring only shows for keyboard navigation: `:focus-visible` matches only
+  // when focus comes from the keyboard (Tab), not from a mouse click, so the
+  // outline doesn't flash when the button is clicked.
+  const focusTarget = calculateButton.parentElement || calculateButton;
+  calculateButton.addEventListener('focus', () => {
+    if (calculateButton.matches(':focus-visible')) {
+      focusTarget.style.setProperty('outline', '2px solid #2563eb', 'important');
+      focusTarget.style.setProperty('outline-offset', '2px', 'important');
+    }
+  });
+  calculateButton.addEventListener('blur', () => {
+    focusTarget.style.removeProperty('outline');
+    focusTarget.style.removeProperty('outline-offset');
+  });
 
   // Block the form's native GET submission so it doesn't submit the raw form
   // fields and interfere with the redirect. The redirect is handled by the
@@ -82,48 +111,48 @@ function initModuleUrlBuilder(module) {
     form.addEventListener('submit', (e) => e.preventDefault());
   }
 
-  // Rebuild the URL and update the debug paragraph live whenever any field in
-  // this module changes, so the debug link stays in sync as the user fills it.
-  const refreshDebug = () => {
-    if (!debugEl) return;
-    debugEl.textContent = buildRedirectUrl(calculateButton, module);
+  // Rebuild the URL, update the debug paragraph, and keep the Calculate
+  // button's href in sync live whenever any field in this module changes, so
+  // the href always holds the current constructed URL (not just on click).
+  const refreshUrl = () => {
+    const url = buildRedirectUrl(calculateButton, module);
+    if (debugEl) debugEl.textContent = url;
+    calculateButton.href = url;
   };
 
   // Origin & Destination inputs. Refresh on typing AND when a suggestion is
   // picked (the autocomplete dispatches a custom 'location-selected' event,
   // not an 'input' event, so the debug link updates immediately on selection).
   module.querySelectorAll('[data-location-input]').forEach((input) => {
-    input.addEventListener('input', refreshDebug);
-    input.addEventListener('location-selected', refreshDebug);
+    input.addEventListener('input', refreshUrl);
+    input.addEventListener('location-selected', refreshUrl);
   });
 
   // Date input (fires when a date is picked).
   module
     .querySelectorAll('[data-date-input]')
-    .forEach((input) => input.addEventListener('change', refreshDebug));
+    .forEach((input) => input.addEventListener('change', refreshUrl));
   // Cargo select.
   module
     .querySelectorAll('[data-cargo-select]')
-    .forEach((select) => select.addEventListener('change', refreshDebug));
+    .forEach((select) => select.addEventListener('change', refreshUrl));
   // Transport checkboxes.
   module
     .querySelectorAll('[data-transport-checkbox]')
-    .forEach((checkbox) => checkbox.addEventListener('change', refreshDebug));
+    .forEach((checkbox) => checkbox.addEventListener('change', refreshUrl));
 
   calculateButton.addEventListener('click', (e) => {
-    const url = buildRedirectUrl(calculateButton, module);
-    if (debugEl) debugEl.textContent = url;
-    // Write the constructed URL to the button's href so the native anchor
-    // navigation redirects correctly on a valid submission.
-    calculateButton.href = url;
+    // Rebuild the URL (keeps the href + debug in sync) and redirect if valid.
+    refreshUrl();
 
-    // Only redirect when the form is valid. The validation module sets the
-    // button's `disabled` attribute to true while any field is invalid, so a
-    // non-disabled button means every field is valid. When valid, prevent the
-    // default anchor navigation and redirect explicitly to the constructed URL.
-    if (!calculateButton.disabled) {
+    // Only redirect when the form is valid. The validation module keeps the
+    // button's `data-valid` attribute in sync and shows errors for invalid
+    // fields on click; when invalid it has already prevented default
+    // navigation. When valid, prevent the default anchor navigation and
+    // redirect explicitly to the constructed URL.
+    if (calculateButton.dataset.valid === 'true') {
       e.preventDefault();
-      window.location.assign(url);
+      window.location.assign(calculateButton.href);
     }
   });
 }
@@ -138,9 +167,13 @@ function buildRedirectUrl(calculateButton, module) {
   // The base URL comes from the Calculate button's href. Fall back to
   // /calculator if the href is empty or just the root, so the
 
-  // redirect always lands on the results page.
+  // redirect always lands on the results page. Strip any existing query string
+  // from the href first: the href is updated live with the constructed URL, so
+  // without this the next rebuild would treat the previous query params as part
+  // of the base and append duplicates.
   const rawBase = calculateButton.getAttribute('href') || '';
-  const baseUrl = !rawBase || rawBase === '/' || rawBase === '#' ? '/calculator' : rawBase;
+  const basePath = rawBase.split('?')[0];
+  const baseUrl = !basePath || basePath === '/' || basePath === '#' ? '/calculator' : basePath;
 
   const params = new URLSearchParams();
 

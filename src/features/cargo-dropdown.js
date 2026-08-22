@@ -47,6 +47,9 @@ export function initCargoDropdown() {
     // an option, but cannot type text into it manually. The value is only ever
     // set programmatically when an option is selected.
     input.readOnly = true;
+    // A readonly input shows a "not-allowed" cursor by default; this field is
+    // interactive (clicking opens the dropdown), so show a pointer instead.
+    input.style.cursor = 'pointer';
 
     // Clone the template and clear the list.
     const templateClone = templateItem.cloneNode(true);
@@ -104,10 +107,19 @@ export function initCargoDropdown() {
       onSelect: (item) => item._select && item._select(),
     });
 
-    // Clicking the input toggles the dropdown.
+    // Opening the dropdown on focus makes it keyboard-operable: tabbing to the
+    // field shows the options, then ArrowUp/Down navigate and Enter selects.
+    // (Focus fires before click, so the click handler below only opens — it
+    // must not toggle, or a click would immediately close what focus opened.)
+    input.addEventListener('focus', () => {
+      dropdown.show();
+    });
+
+    // Clicking the input opens the dropdown (focus already opened it, so this
+    // is idempotent). It closes via outside-click or Escape.
     input.addEventListener('click', (e) => {
       e.stopPropagation();
-      dropdown.toggle();
+      dropdown.show();
     });
 
     // Only values picked from the dropdown are valid. If the user types in

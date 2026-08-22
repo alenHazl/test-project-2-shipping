@@ -11,8 +11,11 @@
  *       - Cargo / Date / Transport → on change (instantly).
 
  *
- *   - The Calculate button is disabled (via the `disabled` attribute, so it
- *     matches the `:disabled` pseudo-class) until every field is valid.
+ *   - The Calculate button is never disabled. Its `data-valid` attribute
+ *     tracks whether every field is valid, and pressing it validates every
+ *     field (showing errors for invalid ones) and blocks navigation until all
+ *     are valid.
+
  *
  * Validation rules:
  *   - Origin contains a valid selected location (not just typed text).
@@ -160,14 +163,15 @@ function getFieldConfigs(module) {
 
 export function initValidation() {
   const modules = document.querySelectorAll('[data-rate-module]');
-  modules.forEach((module) => initModuleValidation(module));
+  modules.forEach((module) => initModuleValidation(module, modules));
 }
 
 /**
  * Wires up validation for a single rate module.
  * @param {HTMLElement} module
+ * @param {NodeList} allModules every rate module on the page
  */
-function initModuleValidation(module) {
+function initModuleValidation(module, allModules) {
   const calculateButton = module.querySelector('[data-calculate-button]');
   const debugEl = module.querySelector('[data-validation-debug]');
 
@@ -177,37 +181,25 @@ function initModuleValidation(module) {
     hideError(module.querySelector(config.errorSelector), getErrorInputs(module, config));
   });
 
-  // The Calculate button is an <a>, so the `disabled` attribute is used to
-  // match the `:disabled` pseudo-class in Webflow. It does not natively block
-  // clicks on an anchor, so we also block navigation in the click handler.
-  // When disabled we also remove it from the tab order (tabindex="-1") and
-  // expose aria-disabled so keyboard users can't focus/activate it.
-  const setButtonDisabled = (disabled) => {
+  // The Calculate button is never disabled (no `disabled` attribute). Instead
+  // its `data-valid` attribute tracks whether every field in this module is
+  // valid. The url-builder reads it on click to decide whether to navigate,
+  // and this module blocks navigation + shows errors when anything is invalid.
+  const updateButtonValidity = () => {
     if (!calculateButton) return;
-    calculateButton.disabled = disabled;
-    if (disabled) {
-      calculateButton.setAttribute('aria-disabled', 'true');
-      calculateButton.setAttribute('tabindex', '-1');
-    } else {
-      calculateButton.removeAttribute('aria-disabled');
-      calculateButton.removeAttribute('tabindex');
-    }
-  };
-
-  // Re-evaluate the button's disabled state from this module's field validity.
-  const updateButtonState = () => {
     const allValid = getFieldConfigs(module).every((config) => config.isValid(module));
-    setButtonDisabled(!allValid);
+    calculateButton.dataset.valid = String(allValid);
   };
 
-  // Pressing Calculate validates every field in this module: shows errors for
-  // invalid ones, updates the debug, and blocks navigation if anything is
-  // invalid.
+  // Pressing Calculate validates every field in EVERY module on the page (not
+  // just this one), so errors show on all components. Navigation is blocked if
+  // any module is invalid. The clicked button's data-valid reflects the overall
+  // state so the url-builder blocks navigation when any module is invalid.
   if (calculateButton) {
     calculateButton.addEventListener('click', (e) => {
-      const results = validateAllFields(module);
-      updateDebug(debugEl, results);
-      if (!Object.values(results).every(Boolean)) {
+      const allValid = validateAllModules(allModules);
+      calculateButton.dataset.valid = String(allValid);
+      if (!allValid) {
         e.preventDefault();
         e.stopPropagation();
       }
@@ -222,8 +214,10 @@ function initModuleValidation(module) {
     const errorEl = module.querySelector(config.errorSelector);
 
     if (config.trigger === 'blur') {
-      // Blur-triggered fields: show/hide the error and update the debug on
-      // blur. The change/input handler only refreshes the button state.
+      // Blur-triggered fields: the error only appears on blur (if the value is
+      // invalid) and disappears as soon as the value changes (typing or picking
+      // a suggestion), regardless of validity. It reappears on blur if still
+      // invalid.
       inputs.forEach((input) => {
         input.addEventListener('blur', () => {
           // For fields that set their validity in a picker's onChange (which
@@ -247,16 +241,22 @@ function initModuleValidation(module) {
       });
 
       const onFieldChange = () => {
-        updateButtonState();
+        updateButtonValidity();
+        // The error disappears as soon as the value changes, regardless of
+        // validity. It reappears on blur if the value is still invalid.
+        hideError(errorEl, getErrorInputs(module, config));
+        updateDebug(debugEl, readAllFieldStates(module));
       };
       inputs.forEach((input) => {
         input.addEventListener(config.event, onFieldChange);
+
         // Location inputs dispatch a custom 'location-selected' event when a
-        // suggestion is picked (and when the sync module propagates a value to
-        // another instance), so the error + debug + button state update right
-        // away (a plain 'input' event would reset the field's validity).
-        // Show/hide the error based on the field's actual validity so an
-        // invalid value synced from another module still shows its error.
+        // suggestion is picked (valid) and when the sync module propagates a
+        // value to another instance (which may be valid or invalid). Show/hide
+        // the error based on the field's actual validity so a synced invalid
+        // value correctly shows its error on the other components (the target
+        // input is never focused, so it would never blur and never show the
+        // error otherwise). Refresh the button validity and debug right away.
         if (input.hasAttribute('data-location-input')) {
           input.addEventListener('location-selected', () => {
             if (config.isValid(module)) {
@@ -264,21 +264,21 @@ function initModuleValidation(module) {
             } else {
               showError(errorEl, getErrorInputs(module, config));
             }
-            updateButtonState();
+            updateButtonValidity();
             updateDebug(debugEl, readAllFieldStates(module));
           });
         }
       });
     } else {
       // Change-triggered fields (cargo, transport): show/hide the error,
-      // update the debug, and refresh the button state on change.
+      // update the debug, and refresh the button validity on change.
       const onFieldChange = () => {
         if (config.isValid(module)) {
           hideError(errorEl, getErrorInputs(module, config));
         } else {
           showError(errorEl, getErrorInputs(module, config));
         }
-        updateButtonState();
+        updateButtonValidity();
         updateDebug(debugEl, readAllFieldStates(module));
       };
 
@@ -288,8 +288,8 @@ function initModuleValidation(module) {
     }
   });
 
-  // Set the initial button state (fields start empty/invalid, so disabled).
-  updateButtonState();
+  // Set the initial button validity (fields start empty/invalid, so false).
+  updateButtonValidity();
 }
 
 /**
@@ -314,6 +314,27 @@ function validateAllFields(module) {
   });
 
   return results;
+}
+
+/**
+ * Validates every field in every module on the page, showing/hiding errors and
+ * updating each module's debug paragraph and Calculate button validity. Returns
+ * whether ALL modules are valid (used to block navigation when any is invalid).
+ * @param {NodeList} modules every rate module on the page
+ * @returns {boolean}
+ */
+function validateAllModules(modules) {
+  let allValid = true;
+  modules.forEach((module) => {
+    const results = validateAllFields(module);
+    const debugEl = module.querySelector('[data-validation-debug]');
+    updateDebug(debugEl, results);
+    const moduleValid = Object.values(results).every(Boolean);
+    const btn = module.querySelector('[data-calculate-button]');
+    if (btn) btn.dataset.valid = String(moduleValid);
+    if (!moduleValid) allValid = false;
+  });
+  return allValid;
 }
 
 /**

@@ -135,6 +135,17 @@ export async function initLocationAutocomplete() {
       }
     });
 
+    // Tabbing / keyboard-navigating to the field also shows the suggestions
+    // when it already has enough text (2+ chars). If the input is empty or has
+    // only a single letter, nothing is fetched and no dropdown appears; if the
+    // query returns no results, fetchCitySuggestions hides the list.
+    input.addEventListener('focus', () => {
+      const query = input.value.trim();
+      if (query.length >= 2) {
+        fetchCitySuggestions(query);
+      }
+    });
+
     // Shared open/close/toggle + keyboard + outside-click behaviour.
 
     const dropdown = createDropdown({
