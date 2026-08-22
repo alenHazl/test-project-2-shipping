@@ -43,6 +43,11 @@ export function initCargoDropdown() {
 
     if (!input || !select || !dropdownList || !templateItem) return;
 
+    // The field is read-only: users can click it to open the dropdown and pick
+    // an option, but cannot type text into it manually. The value is only ever
+    // set programmatically when an option is selected.
+    input.readOnly = true;
+
     // Clone the template and clear the list.
     const templateClone = templateItem.cloneNode(true);
     dropdownList.innerHTML = '';
