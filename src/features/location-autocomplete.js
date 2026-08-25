@@ -31,10 +31,49 @@
  */
 
 import { createDropdown } from '../lib/dropdown.js';
+import { ensureGoogleMaps } from '../lib/load-google-maps.js';
+
+// Min gap between Places autocomplete API calls, so rapid typing can't trip
+// Google's per-minute QPS limit.
+const MIN_REQUEST_INTERVAL_MS = 500;
+
+// Back-off window after a quota / rate-limit error, so we stop hammering the
+// API and let it recover (requests resume automatically once it expires).
+const QUOTA_COOLDOWN_MS = 60000;
+
+function isQuotaError(err) {
+  if (err && typeof err.code === 'number' && err.code === 429) return true;
+  return /quota|rate.?limit|RESOURCE_EXHAUSTED|OVER_QUERY_LIMIT|429/i.test(
+    (err && err.message) || ''
+  );
+}
+
+function showSuggestionUnavailable(fieldContainer) {
+  const errorEl = fieldContainer && fieldContainer.querySelector('[data-location-error]');
+  if (errorEl) {
+    errorEl.textContent =
+      'Location suggestions are temporarily unavailable. Please try again in a moment.';
+    errorEl.style.display = 'block';
+    errorEl.classList.remove('hide');
+  }
+}
+
+function hideSuggestionUnavailable(fieldContainer) {
+  const errorEl = fieldContainer && fieldContainer.querySelector('[data-location-error]');
+  if (errorEl) {
+    errorEl.style.display = 'none';
+    errorEl.classList.add('hide');
+  }
+}
+
+let initialized = false;
 
 export async function initLocationAutocomplete() {
+  // Guard: never initialize twice, even if the bundle is loaded more than once.
+  if (initialized) return;
   const locationInputs = document.querySelectorAll('[data-location-input]');
   if (locationInputs.length === 0) return;
+  initialized = true;
 
   // Optional embedder configuration via window.RateModuleConfig:
   //   { language: 'en', regionCode: 'uk', includedRegionCodes: ['uk'], maxSuggestions: 5 }
@@ -52,13 +91,17 @@ export async function initLocationAutocomplete() {
   const maxSuggestions =
     Number.isInteger(config.maxSuggestions) && config.maxSuggestions > 0
       ? config.maxSuggestions
-      : 5;
+      : 3;
 
   // Uses the new google.maps.places API (AutocompleteSuggestion / Place),
   // loaded via google.maps.importLibrary('places'). If the library fails to
   // load, log an error and bail — the rest of the module still works.
   let AutocompleteSuggestion, Place;
   try {
+    // Cache-proof: make sure the CURRENT Maps loader (with importLibrary) is
+    // present, regardless of what the browser's cache served for Google's
+    // bootstrap script (stale copies throw "importLibrary is not a function").
+    await ensureGoogleMaps();
     const placesLib = await google.maps.importLibrary('places');
     AutocompleteSuggestion = placesLib.AutocompleteSuggestion;
     Place = placesLib.Place;
@@ -106,6 +149,8 @@ export async function initLocationAutocomplete() {
 
     let debounceTimer = null;
     let requestToken = 0; // guards against out-of-order async responses
+    let lastRequestAt = 0; // hard throttle between autocomplete API calls (QPS limit)
+    let quotaCooldownUntil = 0; // back-off window after a quota / rate-limit error
 
     input.dataset.isValid = 'false';
 
@@ -183,6 +228,23 @@ export async function initLocationAutocomplete() {
     }
 
     async function fetchCitySuggestions(query) {
+      // Hard throttle: never fire more than one request per
+      // MIN_REQUEST_INTERVAL_MS, so fast typing can't trip Google's QPS limit.
+      const waitMs = lastRequestAt + MIN_REQUEST_INTERVAL_MS - Date.now();
+      if (waitMs > 0) {
+        await new Promise((resolve) => setTimeout(resolve, waitMs));
+      }
+      lastRequestAt = Date.now();
+
+      // During a quota/rate-limit back-off, skip requests instead of hammering
+      // the API (requests resume automatically once the cooldown expires).
+      if (Date.now() < quotaCooldownUntil) {
+        dropdown.hide();
+        return;
+      }
+
+      // Clear any transient "unavailable" message once a fresh request proceeds.
+      hideSuggestionUnavailable(fieldContainer);
       requestToken += 1;
       const token = requestToken;
 
@@ -207,12 +269,22 @@ export async function initLocationAutocomplete() {
             );
             suggestions = res.suggestions;
           } catch (err2) {
-            console.error('Failed to fetch autocomplete suggestions:', err2);
+            if (isQuotaError(err2)) {
+              quotaCooldownUntil = Date.now() + QUOTA_COOLDOWN_MS;
+              showSuggestionUnavailable(fieldContainer);
+            } else {
+              console.error('Failed to fetch autocomplete suggestions:', err2);
+            }
             dropdown.hide();
             return;
           }
         } else {
-          console.error('Failed to fetch autocomplete suggestions:', err);
+          if (isQuotaError(err)) {
+            quotaCooldownUntil = Date.now() + QUOTA_COOLDOWN_MS;
+            showSuggestionUnavailable(fieldContainer);
+          } else {
+            console.error('Failed to fetch autocomplete suggestions:', err);
+          }
           dropdown.hide();
           return;
         }

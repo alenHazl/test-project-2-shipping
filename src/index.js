@@ -40,7 +40,13 @@ import { initValidation } from './features/validation.js';
 import { initModuleSync } from './services/sync-modules.js';
 import { initUrlBuilder } from './services/url-builder.js';
 
+// Guards against double-initialization if the bundle is ever loaded twice
+// (e.g. the script tag pasted in both Webflow Head code and page code).
+let moduleInitialized = false;
+
 window.addEventListener('load', async () => {
+  if (moduleInitialized) return;
+  moduleInitialized = true;
   // Cargo type dropdown.
   initCargoDropdown();
 
