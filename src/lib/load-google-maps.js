@@ -10,8 +10,10 @@
  * bootstrap predates google.maps.importLibrary(), so calling it throws
  * "google.maps.importLibrary is not a function" and the autocomplete silently
  * stops working (a hard refresh "fixes" it until the stale copy is reused).
- * This loader re-injects the script with a version-pinned URL (v=weekly) - a
- * different URL than any cached copy - and waits for importLibrary to appear.
+ * When no maps/api/js tag exists on the page, this module injects one, with a
+ * version-pinned URL (v=weekly) so the browser never reuses a stale cached
+ * bootstrap. If the page has its own tag, it is never duplicated - loading the
+ * API twice corrupts Google's internals and crashes the Places autocomplete.
  * ============================================================================
  */
 
@@ -20,8 +22,11 @@ const MAPS_VERSION = 'weekly'; // rolling release; always exposes importLibrary
 
 /**
  * Resolves once google.maps.importLibrary is available.
- * Uses the page's existing loader if it already supports importLibrary,
- * otherwise injects a fresh, version-pinned script tag.
+ *
+ * Guarantees the API is loaded AT MOST ONCE:
+ *   - If the page already has a maps/api/js script tag, waits for its loader
+ *     to expose importLibrary (never injects a second copy).
+ *   - Otherwise injects exactly one cache-proof, version-pinned script tag.
  *
  * The API key is never stored in this repo: it is read at runtime from the
  * page - either from window.RateModuleConfig.googleMapsApiKey or from the
@@ -30,24 +35,31 @@ const MAPS_VERSION = 'weekly'; // rolling release; always exposes importLibrary
 export async function ensureGoogleMaps() {
   if (window.google?.maps?.importLibrary) return;
 
+  // NEVER load the Maps API twice. If the page already has a maps/api/js
+  // script tag, wait for ITS loader to become ready instead of injecting a
+  // second one. Double-loading corrupts Google's internals (duplicate gmp-*
+  // custom elements, broken request interceptors) and crashes the Places
+  // autocomplete, so a second tag must never be added.
+  const existingTag = document.querySelector('script[src*="maps.googleapis.com/maps/api/js"]');
+  if (existingTag) {
+    await waitForImportLibrary();
+    return;
+  }
+
   const key = getApiKey();
   if (!key) {
     throw new Error(
-      'Google Maps API key not found. Add a script tag such as ' +
-        '<script src="https://maps.googleapis.com/maps/api/js?key=YOUR_KEY" async></script> ' +
-        'to the page, or set window.RateModuleConfig.googleMapsApiKey.'
+      'Google Maps API key not found. Set window.RateModuleConfig.googleMapsApiKey ' +
+        'to let the module load the Maps API itself.'
     );
   }
 
   const src = `${MAPS_API_URL}?key=${encodeURIComponent(key)}&loading=async&v=${MAPS_VERSION}`;
 
-  // Avoid injecting duplicates if ensureGoogleMaps runs more than once.
   if (!document.querySelector(`script[src="${src}"]`)) {
     await injectScript(src);
   }
 
-  // The bootstrap defines importLibrary when it executes; poll to cover slow
-  // networks or any other script redefining window.google first.
   await waitForImportLibrary();
 }
 
@@ -87,7 +99,13 @@ function waitForImportLibrary(timeoutMs = 10000) {
       if (window.google?.maps?.importLibrary) {
         resolve();
       } else if (Date.now() - startedAt > timeoutMs) {
-        reject(new Error('Timed out waiting for google.maps.importLibrary to become available.'));
+        reject(
+          new Error(
+            'google.maps.importLibrary is not available. If your page has its own ' +
+              'Google Maps script tag, add &v=weekly to its URL so it loads the ' +
+              'current loader (stale cached copies lack importLibrary).'
+          )
+        );
       } else {
         setTimeout(poll, 100);
       }
