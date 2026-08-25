@@ -91,7 +91,7 @@ export async function initLocationAutocomplete() {
   const maxSuggestions =
     Number.isInteger(config.maxSuggestions) && config.maxSuggestions > 0
       ? config.maxSuggestions
-      : 3;
+      : 5;
 
   // Uses the new google.maps.places API (AutocompleteSuggestion / Place),
   // loaded via google.maps.importLibrary('places'). If the library fails to
